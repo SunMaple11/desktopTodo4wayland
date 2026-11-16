@@ -1,0 +1,260 @@
+/* ============ DesktopTodo · macOS 风格主题（GTK4） ============ */
+/* GTK 4.6 无 CSS 变量，深色模式用 .dark 前缀逐条覆盖。            */
+
+* { outline-width: 0; }   /* 关闭焦点虚线，观感更接近 macOS */
+
+window.shell {
+  background: transparent;   /* 让窗口本身透明，露出圆角与阴影 */
+  font-family: "Inter", "SF Pro Text", "Helvetica Neue",
+               "Noto Sans CJK SC", "PingFang SC", "Ubuntu", "Cantarell", sans-serif;
+}
+
+/* ---------- 窗体外框（真正的「面板」） ---------- */
+/* 紧贴窗口边缘（1px），去掉自带投影：让 GNOME 的系统阴影直接贴合
+   圆角面板——避免「系统阴影 + 14px 空隙 + 自带投影」叠成外框观感。 */
+.shell-box {
+  margin: 1px;
+  border-radius: 17px;
+  background: rgba(246, 246, 248, 0.88);
+  border: 1px solid rgba(0, 0, 0, 0.10);
+}
+.shell.dark .shell-box {
+  background: rgba(30, 30, 33, 0.86);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+/* ---------- 顶栏 ---------- */
+.header { padding: 12px 14px 8px 16px; }
+.app-title { font-size: 16px; font-weight: 700; color: rgba(28,28,30,0.96); }
+.app-sub   { font-size: 11px; font-weight: 500; color: rgba(60,60,67,0.55); }
+.shell.dark .app-title { color: rgba(245,245,247,0.96); }
+.shell.dark .app-sub   { color: rgba(235,235,245,0.55); }
+
+/* macOS 红绿灯 */
+.tl { min-width: 13px; min-height: 13px; padding: 0; border: none; box-shadow: none; border-radius: 50%; }
+.tl label { color: transparent; font-size: 10px; font-weight: 700; }
+.tl-red    { background: #FF5F57; border: 1px solid rgba(0,0,0,0.10); }
+.tl-yellow { background: #FEBC2E; border: 1px solid rgba(0,0,0,0.10); }
+.tl-green  { background: #28C840; border: 1px solid rgba(0,0,0,0.10); }
+.tl:hover label { color: rgba(0,0,0,0.55); }
+.tl:active { filter: brightness(0.85); }
+
+/* ---------- 分段控制器（日 / 周 / 月） ---------- */
+.segbar {
+  border-radius: 10px;
+  background: rgba(120, 120, 128, 0.16);
+  padding: 2px;
+}
+.shell.dark .segbar { background: rgba(120, 120, 128, 0.28); }
+
+.seg {
+  background: transparent; border: none; box-shadow: none;
+  border-radius: 8px; padding: 3px 18px;
+  font-size: 12.5px; font-weight: 600;
+  color: rgba(60, 60, 67, 0.62);
+  transition: all 160ms ease;
+}
+.seg:hover { color: rgba(28, 28, 30, 0.85); }
+.seg:checked {
+  background: rgba(255, 255, 255, 0.96);
+  color: rgba(20, 20, 22, 0.95);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18), 0 0 0 0.5px rgba(0,0,0,0.06);
+}
+.shell.dark .seg { color: rgba(235, 235, 245, 0.60); }
+.shell.dark .seg:hover { color: rgba(245, 245, 247, 0.9); }
+.shell.dark .seg:checked {
+  background: rgba(110, 110, 115, 0.92);
+  color: rgba(250, 250, 252, 0.97);
+}
+
+/* ---------- 列表 ---------- */
+.list-scroll { background: transparent; }
+.listbox { background: transparent; padding-bottom: 10px; }
+
+.sec-head { padding: 12px 18px 4px 18px; }
+.sec-title {
+  font-size: 11px; font-weight: 700;
+  color: rgba(60, 60, 67, 0.48);
+}
+.sec-count {
+  font-size: 10.5px; font-weight: 700;
+  color: rgba(60, 60, 67, 0.38);
+  background: rgba(120, 120, 128, 0.14);
+  border-radius: 8px; padding: 1px 7px;
+}
+.sec-title.overdue { color: #E5484D; }
+.sec-count.overdue { color: #E5484D; background: rgba(229, 72, 77, 0.12); }
+.shell.dark .sec-title { color: rgba(235, 235, 245, 0.46); }
+.shell.dark .sec-count { color: rgba(235, 235, 245, 0.40); background: rgba(120, 120, 128, 0.22); }
+.shell.dark .sec-title.overdue, .shell.dark .sec-count.overdue { color: #FF6369; }
+.shell.dark .sec-count.overdue { background: rgba(255, 99, 105, 0.16); }
+
+/* 单条待办 */
+.todo-row {
+  margin: 1px 10px; padding: 8px 10px;
+  border-radius: 11px;
+  transition: background 130ms ease;
+}
+.todo-row:hover { background: rgba(0, 0, 0, 0.055); }
+.shell.dark .todo-row:hover { background: rgba(255, 255, 255, 0.075); }
+
+.todo-title {
+  font-size: 13.5px; font-weight: 600;
+  color: rgba(28, 28, 30, 0.95);
+}
+.todo-row.done .todo-title { color: rgba(60, 60, 67, 0.40); }
+.todo-notes {
+  font-size: 11.5px; font-weight: 400;
+  color: rgba(60, 60, 67, 0.50);
+}
+.shell.dark .todo-title { color: rgba(242, 242, 247, 0.94); }
+.shell.dark .todo-row.done .todo-title { color: rgba(235, 235, 245, 0.34); }
+.shell.dark .todo-notes { color: rgba(235, 235, 245, 0.46); }
+
+/* 圆形勾选框 */
+.chk {
+  min-width: 21px; min-height: 21px; padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  border: 1.6px solid rgba(60, 60, 67, 0.32);
+  box-shadow: none;
+  transition: all 150ms ease;
+}
+.chk:hover { border-color: #0A84FF; background: rgba(10, 132, 255, 0.10); }
+.chk.done { background: #0A84FF; border-color: #0A84FF; }
+.chk.done label { color: #FFFFFF; font-size: 12px; font-weight: 800; }
+.chk label { color: transparent; }
+.shell.dark .chk { border-color: rgba(235, 235, 245, 0.34); }
+.shell.dark .chk:hover { border-color: #0A84FF; background: rgba(10, 132, 255, 0.22); }
+
+/* DDL 胶囊标签 */
+.chip {
+  border-radius: 8px; padding: 2px 8px;
+  font-size: 10.5px; font-weight: 700;
+}
+.chip.later { color: rgba(60, 60, 67, 0.55); background: rgba(120, 120, 128, 0.13); }
+.chip.today { color: #B25000; background: rgba(255, 159, 10, 0.16); }
+.chip.overdue { color: #E5484D; background: rgba(229, 72, 77, 0.13); }
+.chip.none { color: rgba(60, 60, 67, 0.42); background: rgba(120, 120, 128, 0.10); }
+.shell.dark .chip.later { color: rgba(235, 235, 245, 0.55); background: rgba(120, 120, 128, 0.22); }
+.shell.dark .chip.today { color: #FFB340; background: rgba(255, 159, 10, 0.18); }
+.shell.dark .chip.overdue { color: #FF6369; background: rgba(255, 99, 105, 0.16); }
+.shell.dark .chip.none { color: rgba(235, 235, 245, 0.40); background: rgba(120, 120, 128, 0.16); }
+
+/* 空状态 */
+.empty { color: rgba(60, 60, 67, 0.38); font-size: 12.5px; }
+.empty-emoji { font-size: 34px; }
+.shell.dark .empty { color: rgba(235, 235, 245, 0.34); }
+
+/* 撤销 Toast */
+.toast {
+  border-radius: 999px; padding: 8px 8px 8px 15px;
+  background: rgba(28, 28, 30, 0.94);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 12px; font-weight: 500;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
+/* ---------- 详情页 ---------- */
+.dt-title {
+  font-size: 17px; font-weight: 700;
+  color: rgba(28, 28, 30, 0.96);
+}
+.shell.dark .dt-title { color: rgba(245, 245, 247, 0.96); }
+
+.card {
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.66);
+  border: 1px solid rgba(0, 0, 0, 0.055);
+}
+.shell.dark .card {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.07);
+}
+
+.card-label { font-size: 12px; font-weight: 600; color: rgba(60, 60, 67, 0.52); }
+.shell.dark .card-label { color: rgba(235, 235, 245, 0.48); }
+
+.dt-value { font-size: 13px; font-weight: 600; color: rgba(28, 28, 30, 0.92); }
+.dt-countdown { font-size: 12px; font-weight: 600; }
+.dt-countdown.ok  { color: #248A3D; }
+.dt-countdown.soon { color: #B25000; }
+.dt-countdown.bad  { color: #E5484D; }
+.shell.dark .dt-value { color: rgba(242, 242, 247, 0.92); }
+.shell.dark .dt-countdown.ok { color: #32D74B; }
+
+.notes-text {
+  font-size: 13px;
+  color: rgba(28, 28, 30, 0.88);
+}
+.shell.dark .notes-text { color: rgba(242, 242, 247, 0.86); }
+.notes-hint { color: rgba(60, 60, 67, 0.35); font-size: 12.5px; }
+.shell.dark .notes-hint { color: rgba(235, 235, 245, 0.32); }
+
+/* 通用按钮 */
+.btn-plain {
+  background: transparent; border: none; box-shadow: none;
+  padding: 5px 9px; border-radius: 8px;
+  font-size: 12.5px; font-weight: 600;
+  color: #0A84FF;
+}
+.btn-plain:hover { background: rgba(10, 132, 255, 0.12); }
+.btn-plain.danger { color: #E5484D; }
+.btn-plain.danger:hover { background: rgba(229, 72, 77, 0.12); }
+.shell.dark .btn-plain { color: #409CFF; }
+.shell.dark .btn-plain.danger { color: #FF6369; }
+
+.btn-primary {
+  background: #0A84FF; color: #FFFFFF;
+  border: none; box-shadow: none;
+  border-radius: 9px; padding: 6px 16px;
+  font-size: 12.5px; font-weight: 700;
+}
+.btn-primary:hover { background: #2E93FF; }
+.btn-primary:active { background: #0871DB; }
+
+/* 输入框 */
+entry.field, textview.field {
+  border-radius: 9px;
+  background: rgba(120, 120, 128, 0.10);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  color: rgba(28, 28, 30, 0.95);
+  caret-color: #0A84FF;
+}
+entry.field:focus { border-color: #0A84FF; background: rgba(10, 132, 255, 0.06); }
+.shell.dark entry.field, .shell.dark textview.field {
+  background: rgba(120, 120, 128, 0.18);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: rgba(242, 242, 247, 0.95);
+}
+.shell.dark entry.field:focus { border-color: #0A84FF; }
+
+/* 快捷日期胶囊 */
+.quick {
+  border-radius: 999px; padding: 4px 11px;
+  background: rgba(120, 120, 128, 0.14);
+  border: none; box-shadow: none;
+  font-size: 11.5px; font-weight: 600;
+  color: rgba(28, 28, 30, 0.75);
+}
+.quick:hover { background: rgba(10, 132, 255, 0.16); color: #0A84FF; }
+.shell.dark .quick { background: rgba(120, 120, 128, 0.26); color: rgba(242, 242, 247, 0.8); }
+.shell.dark .quick:hover { background: rgba(10, 132, 255, 0.28); color: #6EB5FF; }
+
+/* ---------- 滚动条（细、悬浮式） ---------- */
+scrollbar { background: transparent; }
+scrollbar slider {
+  min-width: 5px; min-height: 36px;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.22);
+}
+.shell.dark scrollbar slider { background: rgba(255, 255, 255, 0.22); }
+scrollbar.horizontal slider { min-width: 36px; min-height: 5px; }
+
+/* 日历微调 */
+calendar {
+  border-radius: 10px;
+  background: transparent;
+  font-size: 12px;
+}
+calendar .highlight { color: #0A84FF; font-weight: 700; }

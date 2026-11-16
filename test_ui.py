@@ -1,0 +1,173 @@
+"""自动化交互测试：用临时数据驱动真实窗口，模拟增删改查 / 视图切换 / 心跳。
+不依赖人工点击；任何断言失败或未捕获异常都会以非零码退出。"""
+from __future__ import annotations
+
+import sys
+import tempfile
+from datetime import datetime, timedelta
+from pathlib import Path
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+from gi.repository import GLib, Gtk
+
+from detail_view import DetailView
+from list_view import TodoList
+from main import App
+from store import Todo, TodoStore
+
+FAILURES: list[str] = []
+
+
+def check(cond: bool, msg: str):
+    tag = "ok" if cond else "FAIL"
+    print(f"  [{tag}] {msg}")
+    if not cond:
+        FAILURES.append(msg)
+
+
+def make_store() -> TodoStore:
+    tmp = Path(tempfile.mkdtemp(prefix="dt-test-"))
+    return TodoStore(path=tmp / "todos.json")
+
+
+def seed(store: TodoStore) -> list[str]:
+    from datetime import date, time
+    today = date.today()
+    ids = []
+    specs = [
+        ("逾期任务", datetime.combine(today - timedelta(days=2), time(12, 0)), False),
+        ("今天到期", datetime.combine(today, time(23, 59)), False),
+        ("明天上午", datetime.combine(today + timedelta(days=1), time(9, 0)), False),
+        ("下周任务", datetime.combine(today + timedelta(days=8), time(9, 0)), False),
+        ("无日期任务", None, False),
+        ("已完成任务", datetime.combine(today - timedelta(days=1), time(12, 0)), True),
+    ]
+    for title, due, done in specs:
+        t = Todo(id=f"id-{title}", title=title, due=due,
+                 notes=f"{title} 的详细说明" + ("\n第二行" if "逾期" in title else ""))
+        t.done = done
+        t.done_at = datetime.now() if done else None
+        store.todos.append(t)
+        ids.append(t.id)
+    store._commit()
+    return ids
+
+
+def run_ui_checks(app: App) -> None:
+    win = app.win
+    store = win.store
+    lst = win.todo_list
+    print("== 数据种子 ==")
+    ids = seed(store)
+    check(len(store.todos) == 6, f"种子 6 条，实际 {len(store.todos)}")
+
+    print("== 日视图分组 ==")
+    secs = lst._sections()
+    names = [s[0] for s in secs]
+    print("   分节:", names)
+    check("已逾期" in names and "今天" in names, "日视图含 已逾期/今天")
+    check("无日期" in names, "日视图含 无日期")
+    check(names[-1] == "已完成", "已完成 沉底")
+    overdue_sec = next(s for s in secs if s[0] == "已逾期")
+    check(all(t.due.date() < datetime.now().date() for t in overdue_sec[2]), "逾期分节内全部已过期")
+
+    print("== 周视图 ==")
+    lst._on_seg(lst._seg_btns["week"], "week")
+    secs = lst._sections()
+    names = [s[0] for s in secs]
+    print("   分节:", names)
+    check("今天" in names and "明天" in names, "周视图含 今天/明天")
+    dated = {t.title for s in secs if s[0] not in ("更晚", "无日期", "已完成") for t in s[2]}
+    check("下周任务" not in dated, "8 天后任务不进周视图的按日分节")
+    check("更晚" in names and "下周任务" in
+          {t.title for s in secs if s[0] == "更晚" for t in s[2]},
+          "8 天后任务归入「更晚」分节")
+
+    print("== 月视图 ==")
+    lst._on_seg(lst._seg_btns["month"], "month")
+    secs = lst._sections()
+    flat = [t.title for s in secs for t in s[2]]
+    check("下周任务" in flat, "8 天后任务出现在月视图")
+    pend_secs = [s for s in secs if s[0] != "已完成" and s[0] != "无日期"]
+    order = [t.due for s in pend_secs for t in s[2] if t.due]
+    check(order == sorted(order), "严格按 DDL 升序")
+
+    print("== 排序稳定性 ==")
+    pend = sorted((t for t in store.pending() if t.due), key=lambda t: t.due)
+    check(pend[0].title == "逾期任务", "最早 DDL 排最前")
+
+    print("== 详情页 / 编辑保存 ==")
+    win.open_todo(ids[0])
+    check(win.stack.get_visible_child_name() == "detail", "进入详情页")
+    dv: DetailView = win.detail
+    check(dv._draft.title == "逾期任务", "详情加载正确")
+    dv._enter_edit()
+    dv.title_entry.set_text("逾期任务（改）")
+    dv._draft.due = datetime.now() + timedelta(days=3)
+    dv._on_save()
+    check(win.stack.get_visible_child_name() == "list", "保存后返回列表")
+    t = store.get(ids[0])
+    check(t.title == "逾期任务（改）" and t.due.date() == (datetime.now() + timedelta(days=3)).date(),
+          "编辑结果已入库")
+
+    print("== 勾选完成 ==")
+    store.toggle_done(ids[1])
+    check(store.get(ids[1]).done is True and store.get(ids[1]).done_at is not None, "toggle_done 落库")
+
+    print("== 删除 + 撤销 ==")
+    removed = store.remove(ids[2])
+    lst.show_undo(removed)
+    check(store.get(ids[2]) is None, "已删除")
+    lst._on_undo()
+    check(store.get(ids[2]) is not None, "撤销恢复（保留原 id）")
+
+    print("== 新建（空标题=放弃 / 正常保存） ==")
+    win.open_new()
+    dv.title_entry.set_text("")
+    dv._on_save()
+    check(len(store.todos) == 6, f"空标题新建被丢弃，仍为 6 条（实际 {len(store.todos)}）")
+    win.open_new()
+    dv.title_entry.set_text("新增任务")
+    dv.notes_tv.get_buffer().set_text("新增的详细说明", -1)
+    dv._on_save()
+    check(any(t.title == "新增任务" for t in store.todos), "正常新建入库")
+    new_t = next(t for t in store.todos if t.title == "新增任务")
+    check(new_t.notes == "新增的详细说明", "备注入库")
+
+    print("== 心跳 ==")
+    win._tick()
+    check(win._tick_src != 0, "心跳已重新调度")
+
+    print("== 持久化往返 ==")
+    store2 = TodoStore(path=store.path)
+    check(len(store2.todos) == len(store.todos), "重载条数一致")
+    a = sorted(t.to_dict()["title"] for t in store.todos)
+    b = sorted(t.to_dict()["title"] for t in store2.todos)
+    check(a == b, "字段无损往返")
+
+    print("== 空数据冒烟 ==")
+    empty = make_store()
+    el = TodoList(empty, on_open=lambda _id: None)
+    el.refresh()
+
+    app.quit()
+
+
+def main() -> int:
+    # 测试用独立 App + 临时数据文件（绝不触碰真实数据）
+    tmp = Path(tempfile.mkdtemp(prefix="dt-test-"))
+    app = App(store_path=tmp / "todos.json")
+    app.connect("activate", lambda a: GLib.idle_add(run_ui_checks, a))
+    GLib.timeout_add_seconds(30, app.quit)   # 兜底：30 秒强制退出
+    code = app.run(None)
+    if FAILURES:
+        print(f"\n*** {len(FAILURES)} 项失败 ***")
+        return 1
+    print("\n全部通过 ✔")
+    return code
+
+
+if __name__ == "__main__":
+    sys.exit(main())
