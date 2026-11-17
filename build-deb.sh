@@ -18,9 +18,12 @@ mkdir -p \
     "$STAGE/DEBIAN"
 
 # ---- 程序文件（main.py 按自身路径定位 style.css，无需 cwd） ----
-for f in main.py window.py list_view.py detail_view.py store.py util.py i18n.py style.css; do
+for f in main.py window.py list_view.py detail_view.py store.py util.py i18n.py layer_control.py style.css; do
     cp "$HERE/$f" "$STAGE/usr/lib/desktoptodo/$f"
 done
+mkdir -p "$STAGE/usr/lib/desktoptodo/gnome-extension"
+cp "$HERE/gnome-extension/extension.js" "$STAGE/usr/lib/desktoptodo/gnome-extension/extension.js"
+cp "$HERE/gnome-extension/metadata.json" "$STAGE/usr/lib/desktoptodo/gnome-extension/metadata.json"
 
 # ---- 启动器 ----
 cat > "$STAGE/usr/bin/desktoptodo" <<'EOF'
