@@ -30,13 +30,14 @@ window.shell {
 .shell.dark .app-title { color: rgba(245,245,247,0.96); }
 .shell.dark .app-sub   { color: rgba(235,235,245,0.55); }
 
-/* macOS 红绿灯 */
-.tl { min-width: 13px; min-height: 13px; padding: 0; border: none; box-shadow: none; border-radius: 50%; }
-.tl label { color: transparent; font-size: 10px; font-weight: 700; }
+/* macOS 红绿灯：符号图标由渲染器精确居中，悬停显示 */
+.tl { min-width: 14px; min-height: 14px; padding: 0; border: none; box-shadow: none; border-radius: 50%; }
 .tl-red    { background: #FF5F57; border: 1px solid rgba(0,0,0,0.10); }
 .tl-yellow { background: #FEBC2E; border: 1px solid rgba(0,0,0,0.10); }
 .tl-green  { background: #28C840; border: 1px solid rgba(0,0,0,0.10); }
-.tl:hover label { color: rgba(0,0,0,0.55); }
+.tl image { color: transparent; transition: color 120ms ease; }
+.tl:hover image { color: rgba(0, 0, 0, 0.58); }
+.tl:active image { color: rgba(0, 0, 0, 0.80); }
 .tl:active { filter: brightness(0.85); }
 
 /* ---------- 分段控制器（日 / 周 / 月） ---------- */

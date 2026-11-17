@@ -49,9 +49,9 @@ class MainWindow(Gtk.ApplicationWindow):
 
         lights = Gtk.Box(spacing=7)
         lights.set_valign(Gtk.Align.CENTER)
-        lights.append(self._traffic("tl-red", "×", self.close))
-        lights.append(self._traffic("tl-yellow", "–", self.minimize))
-        lights.append(self._traffic("tl-green", "+", self._toggle_zoom))
+        lights.append(self._traffic("tl-red", "window-close-symbolic", self.close))
+        lights.append(self._traffic("tl-yellow", "window-minimize-symbolic", self.minimize))
+        lights.append(self._traffic("tl-green", "window-maximize-symbolic", self._toggle_zoom))
         header.append(lights)
 
         tbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
@@ -76,6 +76,7 @@ class MainWindow(Gtk.ApplicationWindow):
         gear.set_valign(Gtk.Align.CENTER)
         gear.connect("clicked", lambda *_: self._popup_settings(gear))
         header.append(gear)
+        self.gear_btn = gear
         root.append(header)
 
         # ---------- 页面栈：列表 / 详情 ----------
@@ -93,12 +94,17 @@ class MainWindow(Gtk.ApplicationWindow):
 
         self.stack.set_visible_child_name("list")
 
-        # ---------- 行级动作（右键菜单使用） ----------
+        # ---------- 行级与列表级动作（右键菜单使用） ----------
         self.install_action("row.toggle", "s",
                             lambda _w, _n, p: self.store.toggle_done(p.get_string()))
         self.install_action("row.edit", "s",
                             lambda _w, _n, p: self.open_todo(p.get_string()))
         self.install_action("row.remove", "s", self._do_remove)
+        self.install_action("list.new", None, lambda *_: self.open_new())
+        self.install_action("list.view", "s",
+                            lambda _w, _n, p: self.todo_list.set_mode(p.get_string()))
+        self.install_action("list.settings", None,
+                            lambda *_: self._popup_settings(self.gear_btn))
 
         # ---------- 心跳与外观 ----------
         self.connect("map", self._on_map)
@@ -109,8 +115,9 @@ class MainWindow(Gtk.ApplicationWindow):
 
     # ---------- 红绿灯 ----------
     @staticmethod
-    def _traffic(css: str, glyph: str, cb) -> Gtk.Button:
-        b = Gtk.Button(label=glyph)
+    def _traffic(css: str, icon: str, cb) -> Gtk.Button:
+        img = Gtk.Image(icon_name=icon, pixel_size=9)   # 符号图标由渲染器居中
+        b = Gtk.Button(child=img)
         b.add_css_class("tl")
         b.add_css_class(css)
         b.set_has_frame(False)
@@ -162,30 +169,34 @@ class MainWindow(Gtk.ApplicationWindow):
         outer.set_margin_end(12)
         outer.set_size_request(240, -1)
 
-        # 语言
+        # 语言（互斥分段）
         outer.append(self._settings_label(i18n.t("set_lang")))
         lang_seg = Gtk.Box(spacing=2)
         lang_seg.add_css_class("segbar")
+        lang_group: dict[str, Gtk.ToggleButton] = {}
         for code, label in (("zh", i18n.t("set_lang_zh")), ("en", i18n.t("set_lang_en"))):
             b = Gtk.ToggleButton(label=label)
             b.add_css_class("seg")
             b.set_size_request(96, -1)
             b.set_active(i18n.get_lang() == code)
-            b.connect("toggled", self._on_lang, code)
+            b.connect("toggled", self._mk_exclusive(lang_group, self._apply_lang_choice), code)
+            lang_group[code] = b
             lang_seg.append(b)
         outer.append(lang_seg)
 
-        # 窗口大小
+        # 窗口大小（互斥分段）
         outer.append(self._settings_label(i18n.t("set_size")))
         size_seg = Gtk.Box(spacing=2)
         size_seg.add_css_class("segbar")
+        size_group: dict[str, Gtk.ToggleButton] = {}
         for key, label in (("small", i18n.t("set_size_s")), ("medium", i18n.t("set_size_m")),
                            ("large", i18n.t("set_size_l"))):
             b = Gtk.ToggleButton(label=label)
             b.add_css_class("seg")
             b.set_size_request(64, -1)
             b.set_active(self.settings.get("size") == key)
-            b.connect("toggled", self._on_size, key)
+            b.connect("toggled", self._mk_exclusive(size_group, self._apply_size_choice), key)
+            size_group[key] = b
             size_seg.append(b)
         outer.append(size_seg)
 
@@ -214,14 +225,34 @@ class MainWindow(Gtk.ApplicationWindow):
         l.add_css_class("card-label")
         return l
 
-    def _on_lang(self, btn, code):
-        if btn.get_active() and i18n.get_lang() != code:
+    # ---------- 互斥分段（点击已选项会弹回，绝不出现全不选/多选） ----------
+    @staticmethod
+    def _mk_exclusive(group: dict, apply_cb):
+        state = {"switching": False}
+
+        def handler(btn: Gtk.ToggleButton, key: str):
+            if state["switching"]:
+                return
+            if not btn.get_active():        # 点击当前已选项：恢复选中
+                state["switching"] = True
+                btn.set_active(True)
+                state["switching"] = False
+                return
+            state["switching"] = True
+            for k, b in group.items():
+                b.set_active(k == key)      # 强制其余全部取消
+            state["switching"] = False
+            apply_cb(key)
+        return handler
+
+    def _apply_lang_choice(self, code: str):
+        if i18n.get_lang() != code:
             i18n.set_lang(code)
             self.settings.set("lang", code)
             self.apply_lang()
 
-    def _on_size(self, btn, key):
-        if btn.get_active() and self.settings.get("size") != key:
+    def _apply_size_choice(self, key: str):
+        if self.settings.get("size") != key:
             self.settings.set("size", key)
             w, h = SIZES[key]
             self.set_default_size(w, h)

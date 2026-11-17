@@ -176,6 +176,30 @@ def run_ui_checks(app: App) -> None:
     s.set("lang", "en")
     check(Settings(path=s.path).get("lang") == "en", "写入往返")
 
+    print("== 空白处菜单动作 ==")
+    win.activate_action("list.view", _GLib.Variant("s", "week"))
+    check(lst.mode == "week", "list.view 切换周视图")
+    win.activate_action("list.new", None)
+    check(win.stack.get_visible_child_name() == "detail" and win.detail._is_new,
+          "list.new 打开新建")
+    win.show_list()
+
+    print("== 设置互斥分段 ==")
+    btns: dict = {}
+    applied = []
+    for k in ("a", "b", "c"):
+        btns[k] = Gtk.ToggleButton(label=k)
+    btns["a"].set_active(True)                     # 初始选中（先于 connect，同真实 UI）
+    handler = win._mk_exclusive(btns, applied.append)
+    for k in ("a", "b", "c"):
+        btns[k].connect("toggled", handler, k)
+    btns["b"].set_active(True)                     # 点 b → b 独占
+    check(applied == ["b"], f"仅应用最后选择: {applied}")
+    check(btns["b"].get_active() and not btns["a"].get_active()
+          and not btns["c"].get_active(), "其余自动取消")
+    btns["b"].set_active(False)                    # 点击已选项试图取消 → 弹回
+    check(btns["b"].get_active() and applied == ["b"], "已选项不可取消（弹回）")
+
     print("== 持久化往返 ==")
     store2 = TodoStore(path=store.path)
     check(len(store2.todos) == len(store.todos), "重载条数一致")

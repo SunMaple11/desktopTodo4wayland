@@ -32,6 +32,8 @@ class App(Gtk.Application):
         if self.win is not None:
             self.win.present()       # 二次启动：只把已有窗口带到前台
             return
+        # 窗口图标（dock / 任务栏 / Alt-Tab 显示的就是它）
+        Gtk.Window.set_default_icon_name("desktoptodo")
         import os
         css_path = os.environ.get("DESKTOPTODO_CSS") or (HERE / "style.css")
         css = Gtk.CssProvider()
