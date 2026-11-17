@@ -25,6 +25,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self._today = date.today()
 
         self.set_title("桌面待办")
+        self.set_decorated(False)   # 去掉 GTK 自绘标题栏（含 GNOME 风格 min/max/close），只用红绿灯
         self.set_default_size(430, 700)
         self.set_size_request(380, 520)
         self.add_css_class("shell")
