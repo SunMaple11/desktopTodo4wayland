@@ -113,11 +113,10 @@ class MainWindow(Gtk.ApplicationWindow):
         self._watch_dark_mode()
         self._refresh_header()
 
-    # ---------- 红绿灯 ----------
+    # ---------- 红绿灯（纯色圆点，不内置符号，观感协调优先） ----------
     @staticmethod
-    def _traffic(css: str, icon: str, cb) -> Gtk.Button:
-        img = Gtk.Image(icon_name=icon, pixel_size=9)   # 符号图标由渲染器居中
-        b = Gtk.Button(child=img)
+    def _traffic(css: str, _unused: str, cb) -> Gtk.Button:
+        b = Gtk.Button()
         b.add_css_class("tl")
         b.add_css_class(css)
         b.set_has_frame(False)
@@ -169,17 +168,18 @@ class MainWindow(Gtk.ApplicationWindow):
         outer.set_margin_end(12)
         outer.set_size_request(240, -1)
 
-        # 语言（互斥分段）
+        # 语言（互斥分段；handler 必须全组共用一个，否则 guard 各自为政导致多选）
         outer.append(self._settings_label(i18n.t("set_lang")))
         lang_seg = Gtk.Box(spacing=2)
         lang_seg.add_css_class("segbar")
         lang_group: dict[str, Gtk.ToggleButton] = {}
+        on_lang = self._mk_exclusive(lang_group, self._apply_lang_choice)
         for code, label in (("zh", i18n.t("set_lang_zh")), ("en", i18n.t("set_lang_en"))):
             b = Gtk.ToggleButton(label=label)
             b.add_css_class("seg")
             b.set_size_request(96, -1)
             b.set_active(i18n.get_lang() == code)
-            b.connect("toggled", self._mk_exclusive(lang_group, self._apply_lang_choice), code)
+            b.connect("toggled", on_lang, code)
             lang_group[code] = b
             lang_seg.append(b)
         outer.append(lang_seg)
@@ -189,13 +189,14 @@ class MainWindow(Gtk.ApplicationWindow):
         size_seg = Gtk.Box(spacing=2)
         size_seg.add_css_class("segbar")
         size_group: dict[str, Gtk.ToggleButton] = {}
+        on_size = self._mk_exclusive(size_group, self._apply_size_choice)
         for key, label in (("small", i18n.t("set_size_s")), ("medium", i18n.t("set_size_m")),
                            ("large", i18n.t("set_size_l"))):
             b = Gtk.ToggleButton(label=label)
             b.add_css_class("seg")
             b.set_size_request(64, -1)
             b.set_active(self.settings.get("size") == key)
-            b.connect("toggled", self._mk_exclusive(size_group, self._apply_size_choice), key)
+            b.connect("toggled", on_size, key)
             size_group[key] = b
             size_seg.append(b)
         outer.append(size_seg)

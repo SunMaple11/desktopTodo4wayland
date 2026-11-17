@@ -46,7 +46,7 @@ desktoptodo                   # 启动；应用列表里也有「桌面待办」
 
 ```bash
 python3 main.py --demo   # 演示模式（临时数据，可与真实实例并行，8 秒后自动退出）
-python3 test_ui.py       # 38 项自动化交互测试
+python3 test_ui.py       # 44 项自动化交互测试
 ```
 
 ## 数据

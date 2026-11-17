@@ -200,6 +200,42 @@ def run_ui_checks(app: App) -> None:
     btns["b"].set_active(False)                    # 点击已选项试图取消 → 弹回
     check(btns["b"].get_active() and applied == ["b"], "已选项不可取消（弹回）")
 
+    print("== 设置面板真实互斥（此前漏测：handler 每钮一个导致多选） ==")
+
+    def _find_toggles(w, out):
+        ch = w.get_first_child()
+        while ch is not None:
+            if isinstance(ch, Gtk.ToggleButton):
+                out.append(ch)
+            _find_toggles(ch, out)
+            ch = ch.get_next_sibling()
+
+    panel = win._build_settings()
+    toggles: list = []
+    _find_toggles(panel, toggles)
+    lang_t, size_t = toggles[:2], toggles[2:5]
+    lang_t[1].set_active(True)                 # 点 English
+    check(sum(b.get_active() for b in lang_t) == 1 and lang_t[1].get_active(),
+          "语言组互斥（真实面板）")
+    lang_t[1].set_active(False)                # 点已选项 → 弹回
+    check(lang_t[1].get_active(), "已选项不可取消（真实面板）")
+    size_t[1].set_active(True)                 # 点 中
+    check(sum(b.get_active() for b in size_t) == 1, "大小组互斥（真实面板）")
+    lang_t[0].set_active(True)                 # 恢复中文，避免影响后续断言
+
+    print("== 右键菜单单实例（挂 listbox，弹新先收旧） ==")
+    from list_view import TodoRow, _close_menu
+    lst._on_blank_secondary(None, 0, 10, 800)
+    check(lst._menu_pop is not None, "空白菜单弹出")
+    p1 = lst._menu_pop
+    lst._on_blank_secondary(None, 0, 10, 800)
+    check(lst._menu_pop is not p1 and p1.get_parent() is None, "再次右键先收旧菜单")
+    rows = [r for r in lst.listbox if isinstance(r, TodoRow)]
+    if rows:
+        rows[0]._on_secondary(None, 0, 5, 5)
+        check(lst._menu_pop is not None, "行菜单经委托弹出")
+    _close_menu(lst)
+
     print("== 持久化往返 ==")
     store2 = TodoStore(path=store.path)
     check(len(store2.todos) == len(store.todos), "重载条数一致")

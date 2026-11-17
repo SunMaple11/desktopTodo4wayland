@@ -14,11 +14,12 @@ gi.require_version("Gtk", "4.0")
 
 
 def _popup_menu(owner: Gtk.Widget, menu: Gio.Menu, x: float, y: float, parent: Gtk.Widget):
-    """统一的右键菜单弹出。
+    """统一的右键菜单弹出（全局同一时刻只有一个实例）。
 
     关键点：
-    - 生命周期挂在 owner 上（下次弹出/销毁时才 unparent），绝不在 closed 时
-      unparent——那会在菜单项的 action 派发完成前销毁菜单，导致点了没反应；
+    - owner 恒为 TodoList、parent 恒为 listbox：listbox 不会因数据刷新被销毁
+      （行会），菜单项 action 派发过程中控件树保持稳定；
+    - 弹新菜单前先收掉旧的，杜绝两个菜单并存的抓取错乱；
     - popup 延迟到 idle，避开本次按键自身的 release 事件。
     """
     _close_menu(owner)
@@ -43,9 +44,9 @@ def _close_menu(owner: Gtk.Widget):
 
 
 class TodoRow(Gtk.ListBoxRow):
-    """单条待办行（含右键菜单：完成 / 取消完成、编辑、删除）。"""
+    """单条待办行（右键菜单委托给 TodoList 的唯一弹层）。"""
 
-    def __init__(self, store: TodoStore, todo: Todo, on_open):
+    def __init__(self, store: TodoStore, todo: Todo, on_open, on_menu):
         super().__init__()
         self.store = store
         self.todo_id = todo.id
@@ -94,14 +95,13 @@ class TodoRow(Gtk.ListBoxRow):
         self._apply_done()
         self._refresh_chip()
         self.connect("activate", lambda *_: on_open(self.todo_id))
+        self._on_menu = on_menu
 
-        # 右键菜单（行级 + 空白处）
+        # 右键菜单
         click = Gtk.GestureClick()
         click.set_button(Gdk.BUTTON_SECONDARY)
         click.connect("pressed", self._on_secondary)
         self.add_controller(click)
-        self.connect("destroy", self._on_destroy)
-        self._menu_pop = None
 
     # ---- 右键菜单（行级） ----
     def _on_secondary(self, _g, _n, x, y):
@@ -115,10 +115,14 @@ class TodoRow(Gtk.ListBoxRow):
             item.set_action_and_target_value(f"win.{action}",
                                              GLib.Variant.new_string(self.todo_id))
             menu.append_item(item)
-        _popup_menu(self, menu, x, y, self)
-
-    def _on_destroy(self, *_):
-        _close_menu(self)
+        # 坐标换算到 listbox 系（菜单统一挂在 listbox 上）
+        lb = self.get_parent()
+        t = self.translate_coordinates(lb, x, y) if lb is not None else None
+        if t:
+            tx, ty = t[-2], t[-1]     # 兼容 (x,y) / (ok,x,y) 两种返回
+        else:
+            tx, ty = x, self.get_allocation().y + y
+        self._on_menu(menu, tx, ty)
 
     # ---- 状态 ----
     def _on_toggle(self, *_):
@@ -222,6 +226,10 @@ class TodoList(Gtk.Box):
         self.listbox.add_controller(blank)
         self.listbox.connect("destroy", self._on_destroy)
 
+    def _open_menu(self, menu: Gio.Menu, x: float, y: float):
+        """所有右键菜单的唯一入口：同一时刻只存在一个弹层，挂在 listbox 上。"""
+        _popup_menu(self, menu, x, y, self.listbox)
+
     def _on_destroy(self, *_):
         _close_menu(self)
 
@@ -238,7 +246,7 @@ class TodoList(Gtk.Box):
             view.append_item(it)
         menu.append_submenu(i18n.t("m_view"), view)
         menu.append(i18n.t("m_settings"), "win.list.settings")
-        _popup_menu(self, menu, x, y, self.listbox)
+        self._open_menu(menu, x, y)
 
     def set_mode(self, mode: str):
         """供动作调用（与点击分段按钮等效）。"""
@@ -327,7 +335,8 @@ class TodoList(Gtk.Box):
         for title, is_overdue, items in secs:
             self.listbox.append(self._section_header(title, is_overdue, len(items)))
             for t in items:
-                self.listbox.append(TodoRow(self.store, t, self.on_open))
+                self.listbox.append(
+                    TodoRow(self.store, t, self.on_open, self._open_menu))
 
     def _section_header(self, title: str, is_overdue: bool, count: int) -> Gtk.ListBoxRow:
         box = Gtk.Box(spacing=7, margin_start=8)
