@@ -223,19 +223,22 @@ def run_ui_checks(app: App) -> None:
     check(sum(b.get_active() for b in size_t) == 1, "大小组互斥（真实面板）")
     lang_t[0].set_active(True)                 # 恢复中文，避免影响后续断言
 
-    print("== 右键菜单单实例（挂 listbox，弹新先收旧） ==")
-    from list_view import TodoRow, _close_menu
-    lst._on_blank_secondary(None, 0, 10, 800)
+    print("== 右键菜单单实例（挂 overlay，弹新先收旧） ==")
+    from list_view import TodoRow
+    lst._on_secondary(lst._right_click, 0, 10, 800)
     check(lst._menu_pop is not None, "空白菜单弹出")
     p1 = lst._menu_pop
-    lst._on_blank_secondary(None, 0, 10, 800)
-    check(lst._menu_pop is not p1 and p1.get_parent() is None, "再次右键先收旧菜单")
+    lst._on_secondary(lst._right_click, 0, 10, 800)
+    check(lst._menu_pop is not p1, "再次右键创建新菜单")
+    while GLib.MainContext.default().pending():
+        GLib.MainContext.default().iteration(False)
+    check(p1.get_parent() is None, "旧菜单已销毁")
     rows = [r for r in lst.listbox if isinstance(r, TodoRow)]
     if rows:
         lst._press_point = (5.0, float(rows[0].get_allocation().y + 5))
         lst._open_row_menu(rows[0])
         check(lst._menu_pop is not None, "行菜单经委托弹出")
-    _close_menu(lst)
+    lst._close_menu()
 
     print("== 持久化往返 ==")
     store2 = TodoStore(path=store.path)

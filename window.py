@@ -29,6 +29,7 @@ class MainWindow(Gtk.ApplicationWindow):
 
         self._tick_src = 0
         self._today = date.today()
+        self._build_version = "1.1.4"
 
         self.set_title(i18n.t("app_title"))
         self.set_decorated(False)   # 去掉 GTK 自绘标题栏，只用红绿灯

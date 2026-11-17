@@ -18,7 +18,7 @@ mkdir -p \
     "$STAGE/DEBIAN"
 
 # ---- 程序文件（main.py 按自身路径定位 style.css，无需 cwd） ----
-for f in main.py window.py list_view.py detail_view.py store.py util.py style.css; do
+for f in main.py window.py list_view.py detail_view.py store.py util.py i18n.py style.css; do
     cp "$HERE/$f" "$STAGE/usr/lib/desktoptodo/$f"
 done
 
