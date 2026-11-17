@@ -1,5 +1,6 @@
-"""主窗口：顶栏（macOS 红绿灯 + 标题 + 新建）、列表/详情页面栈、
-每分钟心跳（仅在窗口可见时运行）、系统深色模式跟随。"""
+"""主窗口：顶栏（红绿灯 + 标题 + 新建 + 设置）、列表/详情页面栈、
+行级右键动作、每分钟心跳（仅窗口可见时运行）、系统深色模式跟随、
+双语与设置（语言 / 窗口大小 / 开机自启）。"""
 from __future__ import annotations
 
 from datetime import date
@@ -9,7 +10,9 @@ from gi.repository import Gio, GLib, Gtk
 
 from detail_view import DetailView
 from list_view import TodoList
+from settings import SIZES, Settings
 from store import Todo, TodoStore
+import i18n
 import util
 
 gi.require_version("Gtk", "4.0")
@@ -21,13 +24,17 @@ class MainWindow(Gtk.ApplicationWindow):
     def __init__(self, app: Gtk.Application, store: TodoStore):
         super().__init__(application=app)
         self.store = store
+        self.settings = Settings()
+        i18n.set_lang(self.settings.get("lang"))
+
         self._tick_src = 0
         self._today = date.today()
 
-        self.set_title("桌面待办")
-        self.set_decorated(False)   # 去掉 GTK 自绘标题栏（含 GNOME 风格 min/max/close），只用红绿灯
-        self.set_default_size(430, 700)
-        self.set_size_request(380, 520)
+        self.set_title(i18n.t("app_title"))
+        self.set_decorated(False)   # 去掉 GTK 自绘标题栏，只用红绿灯
+        w, h = SIZES[self.settings.get("size")]
+        self.set_default_size(w, h)
+        self.set_size_request(360, 520)
         self.add_css_class("shell")
 
         handle = Gtk.WindowHandle()
@@ -42,16 +49,13 @@ class MainWindow(Gtk.ApplicationWindow):
 
         lights = Gtk.Box(spacing=7)
         lights.set_valign(Gtk.Align.CENTER)
-        self.btn_close = self._traffic("tl-red", "×", self.close)
-        self.btn_min = self._traffic("tl-yellow", "–", self.minimize)
-        self.btn_zoom = self._traffic("tl-green", "+", self._toggle_zoom)
-        lights.append(self.btn_close)
-        lights.append(self.btn_min)
-        lights.append(self.btn_zoom)
+        lights.append(self._traffic("tl-red", "×", self.close))
+        lights.append(self._traffic("tl-yellow", "–", self.minimize))
+        lights.append(self._traffic("tl-green", "+", self._toggle_zoom))
         header.append(lights)
 
         tbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
-        self.title_lbl = Gtk.Label(label="待办", halign=Gtk.Align.START)
+        self.title_lbl = Gtk.Label(label=i18n.t("app_title"), halign=Gtk.Align.START)
         self.title_lbl.add_css_class("app-title")
         self.sub_lbl = Gtk.Label(label="", halign=Gtk.Align.START)
         self.sub_lbl.add_css_class("app-sub")
@@ -62,10 +66,16 @@ class MainWindow(Gtk.ApplicationWindow):
         add = Gtk.Button(label="＋")
         add.add_css_class("btn-plain")
         add.set_halign(Gtk.Align.END)
-        add.set_hexpand(True)
-        add.set_tooltip_text("新建待办")
+        add.set_tooltip_text("")
         add.connect("clicked", lambda *_: self.open_new())
         header.append(add)
+
+        gear = Gtk.Button(label="⚙")
+        gear.add_css_class("btn-plain")
+        gear.add_css_class("gear")
+        gear.set_valign(Gtk.Align.CENTER)
+        gear.connect("clicked", lambda *_: self._popup_settings(gear))
+        header.append(gear)
         root.append(header)
 
         # ---------- 页面栈：列表 / 详情 ----------
@@ -83,6 +93,13 @@ class MainWindow(Gtk.ApplicationWindow):
 
         self.stack.set_visible_child_name("list")
 
+        # ---------- 行级动作（右键菜单使用） ----------
+        self.install_action("row.toggle", "s",
+                            lambda _w, _n, p: self.store.toggle_done(p.get_string()))
+        self.install_action("row.edit", "s",
+                            lambda _w, _n, p: self.open_todo(p.get_string()))
+        self.install_action("row.remove", "s", self._do_remove)
+
         # ---------- 心跳与外观 ----------
         self.connect("map", self._on_map)
         self.connect("unmap", self._on_unmap)
@@ -98,7 +115,6 @@ class MainWindow(Gtk.ApplicationWindow):
         b.add_css_class(css)
         b.set_has_frame(False)
         b.set_can_focus(False)
-        b.set_tooltip_text("")
         b.connect("clicked", lambda *_: cb())
         return b
 
@@ -107,6 +123,13 @@ class MainWindow(Gtk.ApplicationWindow):
             self.unmaximize()
         else:
             self.maximize()
+
+    # ---------- 行级动作 ----------
+    def _do_remove(self, _w, _name, param):
+        tid = param.get_string()
+        removed = self.store.remove(tid)
+        if removed is not None:
+            self.todo_list.show_undo(removed)
 
     # ---------- 页面切换 ----------
     def show_list(self):
@@ -122,6 +145,106 @@ class MainWindow(Gtk.ApplicationWindow):
 
     def _on_deleted(self, todo: Todo):
         self.todo_list.show_undo(todo)
+
+    # ---------- 设置弹层 ----------
+    def _popup_settings(self, anchor: Gtk.Button):
+        pop = Gtk.Popover(autohide=True)
+        pop.set_position(Gtk.PositionType.BOTTOM)
+        pop.set_child(self._build_settings())
+        pop.set_parent(anchor)
+        pop.popup()
+
+    def _build_settings(self) -> Gtk.Box:
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        outer.set_margin_top(10)
+        outer.set_margin_bottom(10)
+        outer.set_margin_start(12)
+        outer.set_margin_end(12)
+        outer.set_size_request(240, -1)
+
+        # 语言
+        outer.append(self._settings_label(i18n.t("set_lang")))
+        lang_seg = Gtk.Box(spacing=2)
+        lang_seg.add_css_class("segbar")
+        for code, label in (("zh", i18n.t("set_lang_zh")), ("en", i18n.t("set_lang_en"))):
+            b = Gtk.ToggleButton(label=label)
+            b.add_css_class("seg")
+            b.set_size_request(96, -1)
+            b.set_active(i18n.get_lang() == code)
+            b.connect("toggled", self._on_lang, code)
+            lang_seg.append(b)
+        outer.append(lang_seg)
+
+        # 窗口大小
+        outer.append(self._settings_label(i18n.t("set_size")))
+        size_seg = Gtk.Box(spacing=2)
+        size_seg.add_css_class("segbar")
+        for key, label in (("small", i18n.t("set_size_s")), ("medium", i18n.t("set_size_m")),
+                           ("large", i18n.t("set_size_l"))):
+            b = Gtk.ToggleButton(label=label)
+            b.add_css_class("seg")
+            b.set_size_request(64, -1)
+            b.set_active(self.settings.get("size") == key)
+            b.connect("toggled", self._on_size, key)
+            size_seg.append(b)
+        outer.append(size_seg)
+
+        # 开机自启
+        row = Gtk.Box(spacing=8, margin_top=8)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+        box.set_hexpand(True)
+        l1 = Gtk.Label(label=i18n.t("set_autostart"), halign=Gtk.Align.START)
+        l1.add_css_class("dt-value")
+        l2 = Gtk.Label(label=i18n.t("set_autostart_hint"), halign=Gtk.Align.START)
+        l2.add_css_class("app-sub")
+        box.append(l1)
+        box.append(l2)
+        row.append(box)
+        sw = Gtk.Switch()
+        sw.set_valign(Gtk.Align.CENTER)
+        sw.set_active(self.settings.get("autostart"))
+        sw.connect("notify::active", self._on_autostart)
+        row.append(sw)
+        outer.append(row)
+        return outer
+
+    @staticmethod
+    def _settings_label(text: str) -> Gtk.Label:
+        l = Gtk.Label(label=text, halign=Gtk.Align.START, margin_top=6)
+        l.add_css_class("card-label")
+        return l
+
+    def _on_lang(self, btn, code):
+        if btn.get_active() and i18n.get_lang() != code:
+            i18n.set_lang(code)
+            self.settings.set("lang", code)
+            self.apply_lang()
+
+    def _on_size(self, btn, key):
+        if btn.get_active() and self.settings.get("size") != key:
+            self.settings.set("size", key)
+            w, h = SIZES[key]
+            self.set_default_size(w, h)
+            try:
+                self.unmaximize()
+                self.resize(w, h)
+            except Exception:
+                pass   # resize 在个别 GTK 版本不可用时仅影响即时生效
+
+    def _on_autostart(self, sw, *_):
+        on = sw.get_active()
+        self.settings.set("autostart", on)
+        self.settings.apply_autostart(on)
+
+    # ---------- 语言即时生效 ----------
+    def apply_lang(self):
+        self.set_title(i18n.t("app_title"))
+        self.title_lbl.set_text(i18n.t("app_title"))
+        self._refresh_header()
+        self.todo_list.apply_lang()
+        self.detail.sync_from_fields()
+        if self.stack.get_visible_child_name() == "detail":
+            self.detail.rerender()
 
     # ---------- 心跳（可见时每分钟对齐一次，窗口隐藏即停） ----------
     def _on_map(self, *_):
@@ -143,8 +266,7 @@ class MainWindow(Gtk.ApplicationWindow):
         if self._tick_src:
             return
         now = GLib.DateTime.new_now_local()
-        to_next_min = 60 - now.get_second()
-        self._tick_src = GLib.timeout_add_seconds(to_next_min + 1, self._tick)
+        self._tick_src = GLib.timeout_add_seconds(60 - now.get_second() + 1, self._tick)
 
     def _tick(self):
         self._tick_src = 0
@@ -169,17 +291,15 @@ class MainWindow(Gtk.ApplicationWindow):
     # ---------- 顶栏日期 ----------
     def _refresh_header(self):
         pending = self.store.pending()
-        n_overdue = sum(
-            1 for t in pending if t.due and t.due.date() < date.today())
-        n_today = sum(
-            1 for t in pending if t.due and t.due.date() == date.today())
+        n_overdue = sum(1 for t in pending if t.due and t.due.date() < date.today())
+        n_today = sum(1 for t in pending if t.due and t.due.date() == date.today())
         bits = [util.long_date(date.today())]
         if n_overdue:
-            bits.append(f"{n_overdue} 项逾期")
+            bits.append(i18n.t("sub_overdue", n=n_overdue))
         if n_today:
-            bits.append(f"今天 {n_today} 项")
+            bits.append(i18n.t("sub_today", n=n_today))
         if not n_overdue and not n_today and pending:
-            bits.append(f"{len(pending)} 项待办")
+            bits.append(i18n.t("sub_pending", n=len(pending)))
         self.sub_lbl.set_text(" · ".join(bits))
 
     # ---------- 深色模式 ----------
@@ -187,7 +307,8 @@ class MainWindow(Gtk.ApplicationWindow):
         self._apply_dark(self._read_dark())
         try:
             self._gs = Gio.Settings.new("org.gnome.desktop.interface")
-            self._gs.connect("changed::color-scheme", lambda *_: self._apply_dark(self._read_dark()))
+            self._gs.connect("changed::color-scheme",
+                             lambda *_: self._apply_dark(self._read_dark()))
         except Exception:
             self._gs = None   # 非 GNOME 桌面时保持浅色，无害
 

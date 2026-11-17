@@ -14,6 +14,7 @@ import gi
 from gi.repository import Gdk, GLib, GObject, Gtk, Pango
 
 from store import Todo, TodoStore
+import i18n
 import util
 
 gi.require_version("Gtk", "4.0")
@@ -62,6 +63,18 @@ class DetailView(Gtk.Box):
         self._render()
         GLib.idle_add(self._focus_title)
 
+    # ---------- 语言切换支持 ----------
+    def sync_from_fields(self):
+        """切换语言前，把输入框中的未保存内容收回草稿，避免重建时丢失。"""
+        if self._editing and self._draft is not None:
+            if hasattr(self, "title_entry") and self.title_entry.get_parent() is not None:
+                self._draft.title = self.title_entry.get_text()
+            if hasattr(self, "notes_tv") and self.notes_tv.get_parent() is not None:
+                self._draft.notes = self._read_notes()
+
+    def rerender(self):
+        self._render()
+
     # =========================================================
     # 渲染
     # =========================================================
@@ -90,15 +103,15 @@ class DetailView(Gtk.Box):
 
         # 顶部工具行
         top = Gtk.Box(spacing=4)
-        back = Gtk.Button(label="‹  返回")
+        back = Gtk.Button(label=i18n.t("dt_back"))
         back.add_css_class("btn-plain")
         back.connect("clicked", lambda *_: self.emit_done())
         top.append(back)
         end = Gtk.Box(spacing=2, halign=Gtk.Align.END)
-        edit = Gtk.Button(label="编辑")
+        edit = Gtk.Button(label=i18n.t("dt_edit"))
         edit.add_css_class("btn-plain")
         edit.connect("clicked", lambda *_: self._enter_edit())
-        dele = Gtk.Button(label="删除")
+        dele = Gtk.Button(label=i18n.t("dt_del"))
         dele.add_css_class("btn-plain")
         dele.add_css_class("danger")
         dele.connect("clicked", self._on_delete)
@@ -127,7 +140,7 @@ class DetailView(Gtk.Box):
             card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
             card.add_css_class("card")
             card.set_margin_top(6)
-            lbl = Gtk.Label(label="截止时间", halign=Gtk.Align.START)
+            lbl = Gtk.Label(label=i18n.t("dt_due_time"), halign=Gtk.Align.START)
             lbl.add_css_class("card-label")
             card.append(lbl)
             val = Gtk.Label(label=util.full_due_text(d.due), halign=Gtk.Align.START)
@@ -143,7 +156,7 @@ class DetailView(Gtk.Box):
             ncard = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
             ncard.add_css_class("card")
             ncard.set_margin_top(2)
-            nl = Gtk.Label(label="详细说明", halign=Gtk.Align.START)
+            nl = Gtk.Label(label=i18n.t("dt_notes"), halign=Gtk.Align.START)
             nl.add_css_class("card-label")
             ncard.append(nl)
             scroll = Gtk.ScrolledWindow(vexpand=True)
@@ -168,13 +181,13 @@ class DetailView(Gtk.Box):
         assert d is not None
 
         top = Gtk.Box(spacing=4)
-        cancel = Gtk.Button(label="取消")
+        cancel = Gtk.Button(label=i18n.t("dt_cancel"))
         cancel.add_css_class("btn-plain")
         cancel.connect("clicked", lambda *_: self._on_cancel())
         top.append(cancel)
         spacer = Gtk.Box(hexpand=True)
         top.append(spacer)
-        save = Gtk.Button(label="保存")
+        save = Gtk.Button(label=i18n.t("dt_save"))
         save.add_css_class("btn-primary")
         save.connect("clicked", lambda *_: self._on_save())
         top.append(save)
@@ -182,7 +195,7 @@ class DetailView(Gtk.Box):
 
         self.title_entry = Gtk.Entry()
         self.title_entry.add_css_class("field")
-        self.title_entry.set_placeholder_text("标题，例如：提交实验报告")
+        self.title_entry.set_placeholder_text(i18n.t("dt_title_hint"))
         self.title_entry.set_text(d.title)
         self.title_entry.set_margin_top(6)
         self.title_entry.connect("activate", lambda *_: self._on_save())
@@ -192,7 +205,7 @@ class DetailView(Gtk.Box):
         due_box = Gtk.Box(spacing=8, margin_top=4)
         due_box.add_css_class("card")
         due_box.set_margin_top(6)
-        dlbl = Gtk.Label(label="截止")
+        dlbl = Gtk.Label(label=i18n.t("dt_due"))
         dlbl.add_css_class("card-label")
         dlbl.set_margin_start(12)
         due_box.append(dlbl)
@@ -208,7 +221,7 @@ class DetailView(Gtk.Box):
         ncard.add_css_class("card")
         ncard.set_margin_top(6)
         ncard.set_vexpand(True)
-        nl = Gtk.Label(label="详细说明")
+        nl = Gtk.Label(label=i18n.t("dt_notes"))
         nl.add_css_class("card-label")
         nl.set_margin_start(12)
         ncard.append(nl)
@@ -226,7 +239,7 @@ class DetailView(Gtk.Box):
         self.notes_tv.get_buffer().set_text(d.notes, -1)
         scroll.set_child(self.notes_tv)
         holder.set_child(scroll)
-        self.notes_hint = Gtk.Label(label="点击填写详细说明…", xalign=0, yalign=0)
+        self.notes_hint = Gtk.Label(label=i18n.t("dt_notes_hint"), xalign=0, yalign=0)
         self.notes_hint.add_css_class("notes-hint")
         self.notes_hint.set_margin_top(30)
         self.notes_hint.set_margin_start(12)
@@ -253,7 +266,7 @@ class DetailView(Gtk.Box):
         # 快捷胶囊
         quick = Gtk.Box(spacing=6)
         for name, fn in self._quick_dates():
-            b = Gtk.Button(label=name)
+            b = Gtk.Button(label=i18n.t(name))
             b.add_css_class("quick")
             b.connect("clicked", self._on_quick, fn)
             quick.append(b)
@@ -271,13 +284,13 @@ class DetailView(Gtk.Box):
         hour, minute = (base.hour, base.minute) if self._draft.due else (9, 0)
         self.spin_h = self._spin(0, 23, hour)
         self.spin_m = self._spin(0, 59, minute)
-        trow.append(Gtk.Label(label="时间"))
+        trow.append(Gtk.Label(label=i18n.t("dt_time")))
         trow.append(self.spin_h)
         trow.append(Gtk.Label(label=":"))
         trow.append(self.spin_m)
         box.append(trow)
 
-        ok = Gtk.Button(label="确定")
+        ok = Gtk.Button(label=i18n.t("dt_ok"))
         ok.add_css_class("btn-primary")
         ok.set_halign(Gtk.Align.CENTER)
         ok.connect("clicked", self._apply_popover)
@@ -292,6 +305,12 @@ class DetailView(Gtk.Box):
         s = Gtk.SpinButton.new_with_range(lo, hi, 1)
         s.set_value(val)
         s.set_wrap(True)
+        s.add_css_class("time-spin")
+        s.set_width_chars(2)
+        try:                       # 数字居中（GtkEditable.xalign，GTK ≥ 4.2）
+            s.set_property("xalign", 0.5)
+        except Exception:
+            pass
         return s
 
     def _quick_dates(self):
@@ -303,10 +322,10 @@ class DetailView(Gtk.Box):
             return lambda: dt
 
         return [
-            ("今天", q(nxt_half)),
-            ("明天 9:00", q((now + timedelta(days=1)).replace(hour=9, minute=0))),
-            ("后天 9:00", q((now + timedelta(days=2)).replace(hour=9, minute=0))),
-            ("下周一 9:00", q(datetime(monday.year, monday.month, monday.day, 9, 0))),
+            ("q_today", q(nxt_half)),
+            ("q_tom", q((now + timedelta(days=1)).replace(hour=9, minute=0))),
+            ("q_after", q((now + timedelta(days=2)).replace(hour=9, minute=0))),
+            ("q_next_mon", q(datetime(monday.year, monday.month, monday.day, 9, 0))),
         ]
 
     def _on_quick(self, _b, fn):
@@ -333,7 +352,7 @@ class DetailView(Gtk.Box):
 
     def _sync_due_btn(self):
         if self._draft.due is None:
-            self.due_btn.set_label("添加截止日期  ›")
+            self.due_btn.set_label(i18n.t("dt_add_due"))
         else:
             today = datetime.now().date()
             self.due_btn.set_label(

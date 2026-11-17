@@ -1,19 +1,20 @@
-"""主列表页：按 日 / 周 / 月 分节展示待办，含空状态与撤销 Toast。"""
+"""主列表页：按 日 / 周 / 月 分节展示待办，含行级右键菜单、空状态与撤销 Toast。"""
 from __future__ import annotations
 
 from datetime import date, datetime
 
 import gi
-from gi.repository import GLib, Gtk, Pango
+from gi.repository import Gdk, Gio, GLib, Gtk, Pango
 
 from store import Todo, TodoStore
+import i18n
 import util
 
 gi.require_version("Gtk", "4.0")
 
 
 class TodoRow(Gtk.ListBoxRow):
-    """单条待办行。"""
+    """单条待办行（含右键菜单：完成 / 取消完成、编辑、删除）。"""
 
     def __init__(self, store: TodoStore, todo: Todo, on_open):
         super().__init__()
@@ -63,8 +64,35 @@ class TodoRow(Gtk.ListBoxRow):
         self.set_child(box)
         self._apply_done()
         self._refresh_chip()
-        # 行点击 → 打开详情（按钮点击不会触发行激活）
         self.connect("activate", lambda *_: on_open(self.todo_id))
+
+        # 右键菜单
+        click = Gtk.GestureClick()
+        click.set_button(Gdk.BUTTON_SECONDARY)
+        click.connect("pressed", self._on_secondary)
+        self.add_controller(click)
+
+    # ---- 右键菜单 ----
+    def _on_secondary(self, _g, _n, x, y):
+        menu = Gio.Menu()
+        for label, action in (
+            (i18n.t("act_undone") if self._done else i18n.t("act_done"), "row.toggle"),
+            (i18n.t("dt_edit"), "row.edit"),
+            (i18n.t("act_remove"), "row.remove"),
+        ):
+            item = Gio.MenuItem.new(label, None)
+            item.set_action_and_target_value(f"win.{action}",
+                                             GLib.Variant.new_string(self.todo_id))
+            menu.append_item(item)
+
+        rect = Gdk.Rectangle()
+        rect.x, rect.y, rect.width, rect.height = int(x), int(y), 1, 1
+        pop = Gtk.PopoverMenu.new_from_model(menu)
+        pop.set_has_arrow(False)
+        pop.set_parent(self)
+        pop.set_pointing_to(rect)
+        pop.connect("closed", lambda p: p.unparent())
+        pop.popup()
 
     # ---- 状态 ----
     def _on_toggle(self, *_):
@@ -87,7 +115,7 @@ class TodoRow(Gtk.ListBoxRow):
     def _refresh_chip(self, today=None):
         today = today or datetime.now().date()
         if self._due is None:
-            self.chip.set_text("无日期")
+            self.chip.set_text(i18n.t("chip_nodate"))
             cls = "none"
         else:
             self.chip.set_text(util.due_chip_text(self._due, today))
@@ -122,10 +150,10 @@ class TodoList(Gtk.Box):
         segbar.set_margin_bottom(6)
         self._seg_btns: dict[str, Gtk.ToggleButton] = {}
         self._switching = False
-        for key, name in (("day", "日"), ("week", "周"), ("month", "月")):
-            b = Gtk.ToggleButton(label=name)
+        for key in ("day", "week", "month"):
+            b = Gtk.ToggleButton(label=i18n.t(f"view_{key}"))
             b.add_css_class("seg")
-            b.set_size_request(56, -1)
+            b.set_size_request(64, -1)
             b.connect("toggled", self._on_seg, key)
             segbar.append(b)
             self._seg_btns[key] = b
@@ -172,11 +200,15 @@ class TodoList(Gtk.Box):
             self.mode = key
             self.refresh()
 
+    def apply_lang(self):
+        for key, b in self._seg_btns.items():
+            b.set_label(i18n.t(f"view_{key}"))
+        self.refresh()
+
     # ---------- 数据分组 ----------
     def _sections(self):
         """返回 [(标题, 是否逾期节, [Todo…]), …]，严格按 DDL 升序。"""
-        now = datetime.now()
-        today = now.date()
+        today = datetime.now().date()
         span = self.SPAN[self.mode]
 
         pending = sorted(
@@ -187,35 +219,31 @@ class TodoList(Gtk.Box):
         secs: list[tuple[str, bool, list]] = []
         overdue = [t for t in pending if t.due.date() < today]
         if overdue:
-            secs.append(("已逾期", True, overdue))
+            secs.append((i18n.t("sec_overdue"), True, overdue))
 
-        in_span: list[Todo] = []
         by_day: dict = {}
         for t in pending:
             n = (t.due.date() - today).days
             if self.mode == "day":
                 if n == 0:
-                    in_span.append(t)
+                    by_day.setdefault(today, []).append(t)
             elif 0 <= n < span:
                 by_day.setdefault(t.due.date(), []).append(t)
 
-        if self.mode == "day":
-            if in_span:
-                secs.append((util.day_header(today, today), False, in_span))
-        else:
-            for d in sorted(by_day):
-                secs.append((util.day_header(d, today), False, by_day[d]))
+        for d in sorted(by_day):
+            secs.append((util.day_header(d, today), False, by_day[d]))
+        if self.mode != "day":
             far = [t for t in pending if (t.due.date() - today).days >= span]
             if far:                      # 超出周/月范围的待办也要能找到
-                secs.append(("更晚", False, far))
+                secs.append((i18n.t("sec_later"), False, far))
 
         if no_due:
-            secs.append(("无日期", False, no_due))
+            secs.append((i18n.t("sec_nodate"), False, no_due))
 
         done = sorted(self.store.completed(),
                       key=lambda t: t.done_at or t.created_at, reverse=True)[:50]
         if done:
-            secs.append(("已完成", False, done))
+            secs.append((i18n.t("sec_done"), False, done))
         return secs
 
     # ---------- 渲染 ----------
@@ -230,7 +258,7 @@ class TodoList(Gtk.Box):
                             margin_top=60)
             e1 = Gtk.Label(label="🗒️")
             e1.add_css_class("empty-emoji")
-            e2 = Gtk.Label(label="这里空空如也，享受当下 ✨")
+            e2 = Gtk.Label(label=i18n.t("empty"))
             e2.add_css_class("empty")
             empty.append(e1)
             empty.append(e2)
@@ -278,8 +306,8 @@ class TodoList(Gtk.Box):
         title = todo.title if len(todo.title) <= 12 else todo.title[:12] + "…"
         bar = Gtk.Box(spacing=6)
         bar.add_css_class("toast")
-        bar.append(Gtk.Label(label=f"已删除「{title}」"))
-        btn = Gtk.Button(label="撤销")
+        bar.append(Gtk.Label(label=i18n.t("undo_deleted", t=title)))
+        btn = Gtk.Button(label=i18n.t("undo"))
         btn.add_css_class("btn-plain")
         btn.connect("clicked", self._on_undo)
         bar.append(btn)

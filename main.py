@@ -23,8 +23,8 @@ HERE = Path(__file__).resolve().parent
 
 
 class App(Gtk.Application):
-    def __init__(self, store_path=None):
-        super().__init__(application_id=APP_ID)
+    def __init__(self, store_path=None, app_id=None):
+        super().__init__(application_id=app_id or APP_ID)
         self.store_path = store_path   # 测试可注入临时路径
         self.win: MainWindow | None = None
 
@@ -80,7 +80,8 @@ def main() -> int:
         from pathlib import Path as _P
 
         tmp = _P(tempfile.mkdtemp(prefix="dt-demo-")) / "todos.json"
-        app = App(store_path=tmp)
+        # 演示用独立 id：可与真实实例并行预览
+        app = App(store_path=tmp, app_id=f"{APP_ID}.demo")
         app.connect("activate", lambda a: _seed_demo(a.win.store) if a.win else None)
     else:
         app = App()

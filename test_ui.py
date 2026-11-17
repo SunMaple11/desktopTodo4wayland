@@ -12,8 +12,10 @@ import gi
 gi.require_version("Gtk", "4.0")
 from gi.repository import GLib, Gtk
 
-from detail_view import DetailView
-from list_view import TodoList
+from datetime import date, datetime, timedelta
+
+import i18n
+import util
 from main import App
 from store import Todo, TodoStore
 
@@ -59,6 +61,8 @@ def run_ui_checks(app: App) -> None:
     win = app.win
     store = win.store
     lst = win.todo_list
+    i18n.set_lang("zh")
+    win.apply_lang()
     print("== 数据种子 ==")
     ids = seed(store)
     check(len(store.todos) == 6, f"种子 6 条，实际 {len(store.todos)}")
@@ -101,7 +105,7 @@ def run_ui_checks(app: App) -> None:
     print("== 详情页 / 编辑保存 ==")
     win.open_todo(ids[0])
     check(win.stack.get_visible_child_name() == "detail", "进入详情页")
-    dv: DetailView = win.detail
+    dv = win.detail
     check(dv._draft.title == "逾期任务", "详情加载正确")
     dv._enter_edit()
     dv.title_entry.set_text("逾期任务（改）")
@@ -140,6 +144,38 @@ def run_ui_checks(app: App) -> None:
     win._tick()
     check(win._tick_src != 0, "心跳已重新调度")
 
+    print("== 行级右键动作 ==")
+    from gi.repository import GLib as _GLib
+    win.activate_action("row.toggle", _GLib.Variant("s", ids[3]))
+    check(store.get(ids[3]).done is True, "row.toggle 动作生效")
+    win.activate_action("row.remove", _GLib.Variant("s", ids[3]))
+    check(store.get(ids[3]) is None and lst._undo_todo is not None,
+          "row.remove 动作生效且弹出撤销 Toast")
+    lst._on_undo()
+    check(store.get(ids[3]) is not None, "撤销恢复")
+
+    print("== 双语切换 ==")
+    i18n.set_lang("en")
+    win.apply_lang()
+    names = [s[0] for s in lst._sections()]
+    check({"Tomorrow", "No Date", "Completed"} <= set(names)
+          and not any('一' <= ch <= '鿿' for n in names for ch in n),
+          f"英文分节标题: {names}")
+    check(lst._seg_btns["week"].get_label() == "Week", "分段控件双语")
+    check("Nov" in util.long_date(date.today()), "顶栏日期本地化")
+    i18n.set_lang("zh")
+    win.apply_lang()
+    names = [s[0] for s in lst._sections()]
+    check("明天" in names and "无日期" in names, f"切回中文: {names}")
+
+    print("== 设置持久化 ==")
+    from pathlib import Path as _P
+    from settings import Settings, SIZES
+    s = Settings(path=_P(tempfile.mkdtemp(prefix="dt-set-")) / "settings.json")
+    check(s.get("lang") == "zh" and s.get("size") in SIZES, "默认值")
+    s.set("lang", "en")
+    check(Settings(path=s.path).get("lang") == "en", "写入往返")
+
     print("== 持久化往返 ==")
     store2 = TodoStore(path=store.path)
     check(len(store2.todos) == len(store.todos), "重载条数一致")
@@ -149,17 +185,31 @@ def run_ui_checks(app: App) -> None:
 
     print("== 空数据冒烟 ==")
     empty = make_store()
-    el = TodoList(empty, on_open=lambda _id: None)
+    empty_store = TodoStore(path=_P(tempfile.mkdtemp(prefix="dt-empty-")) / "t.json")
+    from list_view import TodoList as _TL
+    el = _TL(empty_store, on_open=lambda _id: None)
     el.refresh()
 
     app.quit()
 
 
+def _safe_checks(app):
+    """异常也算失败，绝不假通过。"""
+    try:
+        run_ui_checks(app)
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        FAILURES.append("运行时异常（见上方 traceback）")
+        app.quit()
+
+
 def main() -> int:
     # 测试用独立 App + 临时数据文件（绝不触碰真实数据）
     tmp = Path(tempfile.mkdtemp(prefix="dt-test-"))
-    app = App(store_path=tmp / "todos.json")
-    app.connect("activate", lambda a: GLib.idle_add(run_ui_checks, a))
+    # 独立 app id：避免被正在运行的真实实例抢注主实例（否则检查不会执行）
+    app = App(store_path=tmp / "todos.json", app_id="com.sunmaple.desktodo.test")
+    app.connect("activate", lambda a: GLib.idle_add(_safe_checks, a))
     GLib.timeout_add_seconds(30, app.quit)   # 兜底：30 秒强制退出
     code = app.run(None)
     if FAILURES:
