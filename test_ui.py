@@ -232,7 +232,8 @@ def run_ui_checks(app: App) -> None:
     check(lst._menu_pop is not p1 and p1.get_parent() is None, "再次右键先收旧菜单")
     rows = [r for r in lst.listbox if isinstance(r, TodoRow)]
     if rows:
-        rows[0]._on_secondary(None, 0, 5, 5)
+        lst._press_point = (5.0, float(rows[0].get_allocation().y + 5))
+        lst._open_row_menu(rows[0])
         check(lst._menu_pop is not None, "行菜单经委托弹出")
     _close_menu(lst)
 

@@ -13,30 +13,31 @@ import util
 gi.require_version("Gtk", "4.0")
 
 
-def _popup_menu(owner: Gtk.Widget, menu: Gio.Menu, x: float, y: float, parent: Gtk.Widget):
-    """统一的右键菜单弹出（全局同一时刻只有一个实例）。
+def _popup_menu(owner: "TodoList", content: Gtk.Widget, x: float, y: float):
+    """弹出列表唯一的自定义菜单。
 
-    关键点：
-    - owner 恒为 TodoList、parent 恒为 listbox：listbox 不会因数据刷新被销毁
-      （行会），菜单项 action 派发过程中控件树保持稳定；
-    - 弹新菜单前先收掉旧的，杜绝两个菜单并存的抓取错乱；
-    - popup 延迟到 idle，避开本次按键自身的 release 事件。
+    菜单使用普通 Gtk.Button 直接连接回调，不走 Gio.Action。这样菜单项
+    点击与窗口 action 的解析/派发时序完全无关；列表刷新也不会影响回调。
     """
     _close_menu(owner)
     rect = Gdk.Rectangle()
     rect.x, rect.y, rect.width, rect.height = int(x), int(y), 1, 1
-    pop = Gtk.PopoverMenu.new_from_model(menu)
+    pop = Gtk.Popover(autohide=True)
+    pop.add_css_class("app-menu")
     pop.set_has_arrow(False)
-    pop.set_parent(parent)
+    pop.set_child(content)
+    pop.set_parent(owner.listbox)
     pop.set_pointing_to(rect)
     owner._menu_pop = pop
-    GLib.idle_add(pop.popup)
+    # 等本次右键 press/release 完成后再显示，避免 release 误触首个菜单项。
+    GLib.idle_add(owner._show_pending_menu, pop)
 
 
-def _close_menu(owner: Gtk.Widget):
+def _close_menu(owner: "TodoList"):
     pop = getattr(owner, "_menu_pop", None)
     if pop is not None:
         try:
+            pop.popdown()
             pop.unparent()
         except Exception:
             pass
@@ -44,12 +45,13 @@ def _close_menu(owner: Gtk.Widget):
 
 
 class TodoRow(Gtk.ListBoxRow):
-    """单条待办行（右键菜单委托给 TodoList 的唯一弹层）。"""
+    """单条待办行。右键由列表统一处理，避免行/列表各弹出一个菜单。"""
 
     def __init__(self, store: TodoStore, todo: Todo, on_open, on_menu):
         super().__init__()
         self.store = store
         self.todo_id = todo.id
+        self._on_menu = on_menu
         self.set_activatable(True)
         self.add_css_class("todo-row")
 
@@ -95,34 +97,6 @@ class TodoRow(Gtk.ListBoxRow):
         self._apply_done()
         self._refresh_chip()
         self.connect("activate", lambda *_: on_open(self.todo_id))
-        self._on_menu = on_menu
-
-        # 右键菜单
-        click = Gtk.GestureClick()
-        click.set_button(Gdk.BUTTON_SECONDARY)
-        click.connect("pressed", self._on_secondary)
-        self.add_controller(click)
-
-    # ---- 右键菜单（行级） ----
-    def _on_secondary(self, _g, _n, x, y):
-        menu = Gio.Menu()
-        for label, action in (
-            (i18n.t("act_undone") if self._done else i18n.t("act_done"), "row.toggle"),
-            (i18n.t("dt_edit"), "row.edit"),
-            (i18n.t("act_remove"), "row.remove"),
-        ):
-            item = Gio.MenuItem.new(label, None)
-            item.set_action_and_target_value(f"win.{action}",
-                                             GLib.Variant.new_string(self.todo_id))
-            menu.append_item(item)
-        # 坐标换算到 listbox 系（菜单统一挂在 listbox 上）
-        lb = self.get_parent()
-        t = self.translate_coordinates(lb, x, y) if lb is not None else None
-        if t:
-            tx, ty = t[-2], t[-1]     # 兼容 (x,y) / (ok,x,y) 两种返回
-        else:
-            tx, ty = x, self.get_allocation().y + y
-        self._on_menu(menu, tx, ty)
 
     # ---- 状态 ----
     def _on_toggle(self, *_):
@@ -225,13 +199,105 @@ class TodoList(Gtk.Box):
         blank.connect("pressed", self._on_blank_secondary)
         self.listbox.add_controller(blank)
         self.listbox.connect("destroy", self._on_destroy)
+        self._press_point = (0.0, 0.0)
+        # 捕获阶段拦截右键，统一处理，避免 row 与 listbox 各自弹菜单。
+        cap = Gtk.GestureClick()
+        cap.set_button(Gdk.BUTTON_SECONDARY)
+        cap.connect("pressed", self._on_capture_secondary)
+        self.listbox.add_controller(cap)
 
-    def _open_menu(self, menu: Gio.Menu, x: float, y: float):
-        """所有右键菜单的唯一入口：同一时刻只存在一个弹层，挂在 listbox 上。"""
-        _popup_menu(self, menu, x, y, self.listbox)
+    def _get_menu_pop(self):
+        return self._menu_pop
+
+    def _open_menu(self, menu, x, y):
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        if isinstance(menu, Gtk.Widget):
+            content.append(menu)
+        else:
+            self._build_menu_items(content, menu)
+        _popup_menu(self, content, x, y)
+
+    def _build_menu_items(self, box, model):
+        # Gio.Menu 的 model 结构：每个 section 有若干 item，可能有 submenu。
+        for i in range(model.get_n_items()):
+            label = model.get_item_attribute_value(i, "label", GLib.VariantType("s"))
+            action = model.get_item_attribute_value(i, "action", GLib.VariantType("s"))
+            submenu = model.get_item_link(i, "submenu")
+            if submenu is not None:
+                sub = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+                self._build_menu_items(sub, submenu)
+                # 用折叠的二级区域，避免多个 Popover。
+                exp = Gtk.Expander(label=label.get_string() if label else "")
+                exp.set_child(sub)
+                box.append(exp)
+            else:
+                def run(a=action):
+                    if a:
+                        win = self.get_root()
+                        if isinstance(win, Gtk.Window):
+                            win.activate_action(a.get_string(), None)
+                self._append_menu_item(box, label.get_string() if label else "", run)
+
+    def _open_row_menu(self, row: TodoRow):
+        x, y = self._press_point
+        if self._menu_pop is not None:
+            return
+        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self._append_menu_item(
+            content, i18n.t("act_undone") if row._done else i18n.t("act_done"),
+            lambda: self.store.toggle_done(row.todo_id))
+        self._append_menu_item(content, i18n.t("dt_edit"), lambda: self.on_open(row.todo_id))
+        self._append_menu_item(content, i18n.t("act_remove"), lambda: self._remove_todo(row.todo_id))
+        _popup_menu(self, content, x, y)
+
+    def _show_pending_menu(self, pop):
+        if self._menu_pop is not pop:
+            return GLib.SOURCE_REMOVE
+        try:
+            pop.popup()
+        except Exception:
+            pass
+        return GLib.SOURCE_REMOVE
+
+    def _show_pending_menu(self, pop):
+        if self._menu_pop is not pop:
+            return GLib.SOURCE_REMOVE
+        try:
+            pop.popup()
+        except Exception:
+            # 控件在 idle 到达前被销毁/卸载，直接放弃，不影响应用。
+            pass
+        return GLib.SOURCE_REMOVE
+
+    def _append_menu_item(self, box, label, callback):
+        btn = Gtk.Button(label=label)
+        btn.add_css_class("app-menu-item")
+        btn.set_has_frame(False)
+        btn.connect("clicked", lambda _b: self._on_menu_item(callback))
+        box.append(btn)
+
+    def _on_menu_item(self, callback):
+        # 先关闭菜单，再执行用户操作；普通按钮回调不依赖 Gio 菜单派发。
+        _close_menu(self)
+        callback()
+
+    def _remove_todo(self, tid):
+        removed = self.store.remove(tid)
+        if removed is not None:
+            self.show_undo(removed)
 
     def _on_destroy(self, *_):
         _close_menu(self)
+
+    def _on_capture_secondary(self, gesture, n_press, x, y):
+        self._press_point = (x, y)
+        row = self.listbox.get_row_at_y(int(y))
+        if isinstance(row, TodoRow):
+            self._open_row_menu(row)
+        else:
+            self._on_blank_secondary(gesture, n_press, x, y)
+        # 不再让后续控制器重复处理，且保证不会触发 GTK 内建右键菜单。
+        gesture.set_state(Gtk.EventSequenceState.CLAIMED)
 
     def _on_blank_secondary(self, _g, _n, x, y):
         if self.listbox.get_row_at_y(int(y)) is not None:
