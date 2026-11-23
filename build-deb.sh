@@ -3,7 +3,7 @@
 # 用法：./build-deb.sh [版本号]   →  dist/desktoptodo_<版本>_all.deb
 set -e
 
-VERSION="${1:-1.0.0}"
+VERSION="${1:-1.3.1}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 STAGE="$HERE/build/deb/desktoptodo"
 OUT="$HERE/dist"
@@ -57,7 +57,7 @@ desktoptodo ($VERSION) stable; urgency=medium
 
   * Release $VERSION, see CHANGELOG.md in the source repository.
 
- -- sunmaple <sunmaple@users.noreply.github.com>  $(date -R)
+ -- SunMaple <1193067705@qq.com>  $(date -R)
 EOF
 gzip -9n "$STAGE/usr/share/doc/desktoptodo/changelog"
 
@@ -67,7 +67,7 @@ cat > "$STAGE/DEBIAN/control" <<EOF
 Package: desktoptodo
 Version: $VERSION
 Architecture: all
-Maintainer: sunmaple <sunmaple@users.noreply.github.com>
+Maintainer: SunMaple <1193067705@qq.com>
 Installed-Size: $INSTALLED_SIZE
 Depends: python3-gi, gir1.2-gtk-4.0
 Section: utils
