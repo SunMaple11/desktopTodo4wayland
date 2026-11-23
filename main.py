@@ -24,11 +24,10 @@ HERE = Path(__file__).resolve().parent
 
 class App(Gtk.Application):
     def __init__(self, store_path=None, app_id=None):
-        # 不再依赖 com.sunmaple.desktodo 这个 bus name：旧版 Shell 扩展
-        # 曾在会话中占用它，导致 GTK 单实例注册失败。默认改为普通窗口应用；
-        # 用独立 helper 进程/设置仍然可以正常启动。
-        super().__init__(application_id=app_id or f"{APP_ID}.app")
-        self.set_flags(Gio.ApplicationFlags.NON_UNIQUE)
+        # 使用与 desktoptodo.desktop 一致的应用 ID，供 GNOME Dock
+        # 将运行窗口与桌面入口及其 Icon=desktoptodo 关联。
+        super().__init__(application_id=app_id or APP_ID)
+        # 旧版 Shell 扩展可能曾占用该 bus name，但功能已移除。
         self.store_path = store_path   # 测试可注入临时路径
         self.win: MainWindow | None = None
 
@@ -38,6 +37,7 @@ class App(Gtk.Application):
             return
         # 窗口图标（dock / 任务栏 / Alt-Tab 显示的就是它）
         Gtk.Window.set_default_icon_name("desktoptodo")
+        # 窗口级图标也明确设置，避免运行中窗口回退到 Python/GTK 图标。
         import os
         css_path = os.environ.get("DESKTOPTODO_CSS") or (HERE / "style.css")
         css = Gtk.CssProvider()
@@ -47,6 +47,7 @@ class App(Gtk.Application):
 
         store = TodoStore(path=self.store_path) if self.store_path else TodoStore()
         self.win = MainWindow(self, store)
+        self.win.set_icon_name("desktoptodo")
         self.win.present()
 
 

@@ -44,7 +44,7 @@ Comment=macOS 风格的桌面待办清单（原生 Wayland / GTK4）
 Exec=desktoptodo
 Icon=desktoptodo
 Terminal=false
-Categories=Utility;Office;
+Categories=Utility;
 Keywords=todo;task;ddl;待办;清单;截止;
 StartupWMClass=com.sunmaple.desktodo
 EOF
