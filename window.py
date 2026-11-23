@@ -30,7 +30,7 @@ class MainWindow(Gtk.ApplicationWindow):
 
         self._tick_src = 0
         self._today = date.today()
-        self._build_version = "1.2.0"
+        self._build_version = "1.2.1"
         self.layer = LayerController()
         self._layer_mode = self.settings.get("layer")
         self._layer_error = False

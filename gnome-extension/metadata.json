@@ -3,5 +3,5 @@
   "name": "Desktop Todo Window Layer",
   "description": "Window layer helper for Desktop Todo: normal, always on top, and always below.",
   "shell-version": ["42", "43", "44"],
-  "version": 1
+  "version": 2
 }

@@ -7,10 +7,10 @@
 const Gio = imports.gi.Gio;
 const GLib = imports.gi.GLib;
 
-const DBUS_NAME = 'com.sunmaple.desktodo';
+const DBUS_NAME = 'com.sunmaple.desktodo.layer';
 const DBUS_PATH = '/com/sunmaple/desktodo/layer';
 const IFACE = 'com.sunmaple.desktodo.Layer';
-const WINDOW_TITLE = '桌面待办';
+const WINDOW_TITLES = ['桌面待办', 'To-Dos'];
 
 const INTERFACE_XML = `
 <node>
@@ -42,8 +42,8 @@ function findTodoWindows() {
             const title = win.get_title() || '';
             const wmClass = win.get_wm_class() || '';
             // 标题是应用自己的稳定标识；wm_class 作为 X11/兼容场景补充。
-            if (title === WINDOW_TITLE || wmClass === 'desktoptodo' ||
-                wmClass === 'com.sunmaple.desktodo')
+            if (WINDOW_TITLES.includes(title) || wmClass === 'desktoptodo' ||
+                wmClass === 'com.sunmaple.desktodo' || wmClass === 'com.sunmaple.desktodo.app')
                 result.push(win);
         } catch (e) {
             logError(e, 'DesktopTodo layer: window inspection failed');
@@ -99,7 +99,6 @@ function Ping() {
 function enable() {
     state = {
         mode: 'normal',
-        ownerId: 0,
         object: null,
         windowCreatedId: 0,
     };
@@ -110,8 +109,8 @@ function enable() {
             return;
         const title = win.get_title() || '';
         const wmClass = win.get_wm_class() || '';
-        if (title === WINDOW_TITLE || wmClass === 'desktoptodo' ||
-            wmClass === 'com.sunmaple.desktodo') {
+        if (WINDOW_TITLES.includes(title) || wmClass === 'desktoptodo' ||
+            wmClass === 'com.sunmaple.desktodo' || wmClass === 'com.sunmaple.desktodo.app') {
             // 等窗口 map 完成后再操作，避免过早调用被合成器覆盖。
             GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
                 if (state)
@@ -127,18 +126,8 @@ function enable() {
         Ping,
     });
     state.object.export(Gio.DBus.session, DBUS_PATH);
-
-    state.ownerId = Gio.bus_own_name(
-        Gio.BusType.SESSION,
-        DBUS_NAME,
-        Gio.BusNameOwnerFlags.NONE,
-        null,
-        () => applyAll(),
-        () => {}
-    );
-}
-
-function disable() {
+    // 仅导出在 org.gnome.Shell 连接上；绝不申请应用 bus name。
+}function disable() {
     if (!state)
         return;
     if (state.windowCreatedId) {
@@ -149,10 +138,6 @@ function disable() {
         state.object.flush();
         state.object.unexport();
         state.object = null;
-    }
-    if (state.ownerId) {
-        Gio.bus_unown_name(state.ownerId);
-        state.ownerId = 0;
     }
     // 关闭扩展时恢复普通层级，避免把窗口永久留在 above 状态。
     for (const win of findTodoWindows())

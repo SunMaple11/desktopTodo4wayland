@@ -14,7 +14,7 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gdk", "4.0")
-from gi.repository import Gdk, GLib, Gtk  # noqa: E402
+from gi.repository import Gio, Gdk, GLib, Gtk  # noqa: E402
 
 from store import TodoStore  # noqa: E402
 from window import APP_ID, MainWindow  # noqa: E402
@@ -24,7 +24,11 @@ HERE = Path(__file__).resolve().parent
 
 class App(Gtk.Application):
     def __init__(self, store_path=None, app_id=None):
-        super().__init__(application_id=app_id or APP_ID)
+        # 不再依赖 com.sunmaple.desktodo 这个 bus name：旧版 Shell 扩展
+        # 曾在会话中占用它，导致 GTK 单实例注册失败。默认改为普通窗口应用；
+        # 用独立 helper 进程/设置仍然可以正常启动。
+        super().__init__(application_id=app_id or f"{APP_ID}.app")
+        self.set_flags(Gio.ApplicationFlags.NON_UNIQUE)
         self.store_path = store_path   # 测试可注入临时路径
         self.win: MainWindow | None = None
 

@@ -17,7 +17,7 @@ from gi.repository import Gio, GLib
 APP_ID = "com.sunmaple.desktodo"
 EXT_UUID = "desktoptodo-layer@desktoptodo"
 EXT_NAME = "Desktop Todo Window Layer"
-DBUS_NAME = APP_ID
+DBUS_NAME = "org.gnome.Shell"
 DBUS_PATH = "/com/sunmaple/desktodo/layer"
 DBUS_IFACE = "com.sunmaple.desktodo.Layer"
 HERE = Path(__file__).resolve().parent
@@ -53,10 +53,25 @@ class LayerController:
         if not SOURCE_EXT.is_dir():
             raise LayerError(f"找不到扩展源文件：{SOURCE_EXT}")
         self.extension_dir.parent.mkdir(parents=True, exist_ok=True)
+        self.extension_dir.mkdir(parents=True, exist_ok=True)
         # 只覆盖本应用自己的扩展目录，不触碰其它扩展。
         for filename in ("extension.js", "metadata.json"):
             shutil.copy2(SOURCE_EXT / filename, self.extension_dir / filename)
-        # gnome-extensions enable 在 GNOME 42 会立即加载已存在的扩展。
+        # 先尝试 Shell 原生 D-Bus 接口；gnome-extensions 可能连接到
+        # 另一个服务对象，在部分 GNOME 42 环境不能发现新安装扩展。
+        try:
+            shell = Gio.DBusProxy.new_sync(
+                Gio.bus_get_sync(Gio.BusType.SESSION, None),
+                Gio.DBusProxyFlags.NONE, None,
+                "org.gnome.Shell", "/org/gnome/Shell",
+                "org.gnome.Shell.Extensions", None)
+            result = shell.call_sync(
+                "EnableExtension", GLib.Variant("(s)", (EXT_UUID,)),
+                Gio.DBusCallFlags.NONE, 3000, None)
+            if result and result.unpack()[0]:
+                return
+        except GLib.Error:
+            pass
         result = subprocess.run(
             ["gnome-extensions", "enable", EXT_UUID],
             capture_output=True, text=True, timeout=5, check=False)
