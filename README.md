@@ -26,8 +26,8 @@ sudo apt install python3-gi gir1.2-gtk-4.0
 ## 运行
 
 ```bash
-git clone https://github.com/<你的 GitHub 用户名>/desktoptodo.git
-cd desktoptodo
+git clone https://github.com/SunMaple11/desktopTodo4wayland.git
+cd desktopTodo4wayland
 ./run.sh
 ```
 

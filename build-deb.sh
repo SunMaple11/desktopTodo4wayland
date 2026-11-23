@@ -72,7 +72,7 @@ Installed-Size: $INSTALLED_SIZE
 Depends: python3-gi, gir1.2-gtk-4.0
 Section: utils
 Priority: optional
-Homepage: https://github.com/sunmaple/desktoptodo
+Homepage: https://github.com/SunMaple11/desktopTodo4wayland
 Description: macOS-style desktop todo list (native Wayland / GTK4)
  macOS 风格的桌面待办清单：按 DDL 排序，日/周/月视图，详情与倒计时，
  半透明圆角面板，跟随系统深浅色。无 Electron，低功耗（无轮询线程）。
