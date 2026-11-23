@@ -11,7 +11,6 @@ from gi.repository import Gio, GLib, Gtk
 from detail_view import DetailView
 from list_view import TodoList
 from settings import SIZES, Settings
-from layer_control import LayerController, LayerError
 from store import Todo, TodoStore
 import i18n
 import util
@@ -30,10 +29,7 @@ class MainWindow(Gtk.ApplicationWindow):
 
         self._tick_src = 0
         self._today = date.today()
-        self._build_version = "1.2.1"
-        self.layer = LayerController()
-        self._layer_mode = self.settings.get("layer")
-        self._layer_error = False
+        self._build_version = "1.3.0"
 
         self.set_title(i18n.t("app_title"))
         self.set_decorated(False)   # 去掉 GTK 自绘标题栏，只用红绿灯
@@ -117,8 +113,6 @@ class MainWindow(Gtk.ApplicationWindow):
         self.connect("destroy", self._on_destroy)
         self._watch_dark_mode()
         self._refresh_header()
-        if self._layer_mode != "normal":
-            GLib.idle_add(self._apply_layer_initial)
 
     # ---------- 红绿灯（纯色圆点，不内置符号，观感协调优先） ----------
     @staticmethod
@@ -208,28 +202,6 @@ class MainWindow(Gtk.ApplicationWindow):
             size_seg.append(b)
         outer.append(size_seg)
 
-        # 窗口层级（可选 GNOME Shell 扩展）
-        outer.append(self._settings_label(i18n.t("set_layer")))
-        layer_seg = Gtk.Box(spacing=2)
-        layer_seg.add_css_class("segbar")
-        layer_group: dict[str, Gtk.ToggleButton] = {}
-        on_layer = self._mk_exclusive(layer_group, self._apply_layer_choice)
-        for key, label in (("normal", i18n.t("layer_normal")),
-                           ("top", i18n.t("layer_top")),
-                           ("bottom", i18n.t("layer_bottom"))):
-            b = Gtk.ToggleButton(label=label)
-            b.add_css_class("seg")
-            b.set_size_request(64, -1)
-            b.set_active(self._layer_mode == key)
-            b.connect("toggled", on_layer, key)
-            layer_group[key] = b
-            layer_seg.append(b)
-        outer.append(layer_seg)
-        hint = Gtk.Label(label=i18n.t("layer_hint"), halign=Gtk.Align.START,
-                         wrap=True, xalign=0)
-        hint.add_css_class("app-sub")
-        outer.append(hint)
-
         # 开机自启
         row = Gtk.Box(spacing=8, margin_top=8)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
@@ -292,30 +264,6 @@ class MainWindow(Gtk.ApplicationWindow):
             except Exception:
                 pass   # resize 在个别 GTK 版本不可用时仅影响即时生效
 
-    def _apply_layer_initial(self):
-        try:
-            self.layer.set_mode(self._layer_mode)
-        except LayerError:
-            self._layer_mode = "normal"
-            self.settings.set("layer", "normal")
-        return GLib.SOURCE_REMOVE
-
-    def _apply_layer_choice(self, mode: str):
-        if mode == self._layer_mode:
-            return
-        previous = self._layer_mode
-        try:
-            self.layer.set_mode(mode)
-            self._layer_mode = mode
-            self.settings.set("layer", mode)
-        except LayerError as exc:
-            # 失败时恢复 UI 和持久化状态，不把“已选中”误报成已生效。
-            self._layer_mode = previous
-            self.settings.set("layer", previous)
-            print(f"[desktoptodo] {i18n.t('layer_failed')}: {exc}")
-            if self._layer_mode != "normal":
-                GLib.idle_add(self._apply_layer_initial)
-
     def _on_autostart(self, sw, *_):
         on = sw.get_active()
         self.settings.set("autostart", on)
@@ -372,7 +320,6 @@ class MainWindow(Gtk.ApplicationWindow):
         if self._tick_src:
             GLib.source_remove(self._tick_src)
             self._tick_src = 0
-        self.layer.reset()
 
     # ---------- 顶栏日期 ----------
     def _refresh_header(self):

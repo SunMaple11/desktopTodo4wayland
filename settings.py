@@ -8,7 +8,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 
-DEFAULTS = {"lang": "zh", "size": "medium", "autostart": False, "layer": "normal"}
+DEFAULTS = {"lang": "zh", "size": "medium", "autostart": False}
 
 # 窗口尺寸预设
 SIZES = {"small": (380, 560), "medium": (430, 700), "large": (500, 860)}
@@ -35,8 +35,6 @@ class Settings:
             self.data["lang"] = "zh"
         if self.data["size"] not in SIZES:
             self.data["size"] = "medium"
-        if self.data["layer"] not in ("normal", "top", "bottom"):
-            self.data["layer"] = "normal"
         self.data["autostart"] = bool(self.data["autostart"])
 
     def save(self):
